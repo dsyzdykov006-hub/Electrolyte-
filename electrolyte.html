@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Почему машина иногда сыпет больше порошка? Эксперимент с пятнами!</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            background: linear-gradient(135deg, #a8e6cf, #dcedc1);
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { text-align: center; color: #1565c0; font-size: 2.2em; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 30px; max-width: 1200px; margin: 30px auto; }
+        .left-column, .right-column { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .stain-item {
+            display: flex;
+            align-items: center;
+            padding: 18px;
+            margin-bottom: 15px;
+            background: #f0f8ff;
+            border-radius: 15px;
+            border-left: 8px solid;
+            transition: all 0.3s;
+        }
+        .stain-item:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
+        .stain-item input[type="checkbox"] { width: 30px; height: 30px; cursor: pointer; }
+        .stain-name { flex: 1; margin-left: 20px; font-size: 1.5em; font-weight: bold; }
+        .slider-container { width: 220px; text-align: center; }
+        .mass-value { font-size: 1.6em; font-weight: bold; color: #1565c0; margin-top: 8px; }
+        .results-summary {
+            text-align: center;
+            padding: 35px;
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-radius: 20px;
+            margin-bottom: 30px;
+        }
+        .conductivity-meter {
+            height: 70px;
+            background: #e0e0e0;
+            border-radius: 35px;
+            overflow: hidden;
+            margin: 30px 0;
+            position: relative;
+            border: 6px solid #fff;
+        }
+        .conductivity-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #ffeb3b, #f44336);
+            transition: width 1.2s ease;
+        }
+        .meter-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2.2em;
+            font-weight: bold;
+            color: #0d47a1;
+        }
+        .powder-amount { font-size: 4.5em; font-weight: 900; color: #d81b60; }
+        .powder-change { font-size: 1.8em; font-weight: bold; margin-top: 15px; }
+        #reset-btn {
+            display: block;
+            margin: 40px auto;
+            padding: 18px 50px;
+            font-size: 1.6em;
+            background: #ff5722;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+        }
+        @media (max-width: 968px) { .container { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<h1>Почему стиральная машина иногда сыпет больше порошка? Давай узнаем!</h1>
+
+<div style="background:white; padding:30px; margin:20px auto; max-width:900px; border-radius:20px; font-size:1.4em; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
+    Выбери пятна на белье → измени их массу слайдером → посмотри, сколько порошка насыпет машина и насколько изменится проводимость воды.<br><br>
+    Чем выше проводимость → тем больше порошка выдаст машина!
+</div>
+
+<div class="container">
+    <div class="left-column">
+        <h2 style="text-align:center; color:#1565c0;">Выбери пятна и массу (1–10 мг)</h2>
+        <div id="stains-selection"></div>
+        <button id="reset-btn">Начать заново</button>
+    </div>
+
+    <div class="right-column">
+        <div class="results-summary">
+            <h2>Проводимость воды</h2>
+            <div class="conductivity-meter">
+                <div class="conductivity-fill" id="conductivity-fill"></div>
+                <div class="meter-label" id="conductivity-label">50%</div>
+            </div>
+            <div style="margin-top:30px;">
+                <div>Машина насыплет порошка:</div>
+                <div class="powder-amount" id="powder-mass">110 г</div>
+                <div class="powder-change" id="powder-change">как обычно</div>
+            </div>
+        </div>
+
+        <canvas id="contributionChart" height="400"></canvas>
+    </div>
+</div>
+
+<script>
+const stains = [
+    {id: "soda", name: "Пищевая сода", coef: -0.07, color: "#43a047"},
+    {id: "vinegar", name: "Уксус", coef: -0.09, color: "#4caf50"},
+    {id: "machine_oil", name: "Машинное масло", coef: 0.01, color: "#78909c"},
+    {id: "iodine", name: "Йод", coef: 0.06, color: "#6a1b9a"},
+    {id: "starch", name: "Крахмал", coef: 0.03, color: "#ffca28"},
+    {id: "grass", name: "След от травы", coef: 0.09, color: "#689f38"},
+    {id: "alcohol", name: "Спирт", coef: 0.00, color: "#b0bec5"},
+    {id: "paint", name: "Малярная краска", coef: 0.13, color: "#ef6c00"},
+    {id: "dirt", name: "Грязь", coef: 0.22, color: "#8d6e63"},
+    {id: "sweat", name: "Пот", coef: 0.17, color: "#f06292"},
+    {id: "sunflower", name: "Подсолнечное масло", coef: 0.01, color: "#90a4ae"},
+    {id: "blood", name: "Кровь", coef: 0.25, color: "#d32f2f"},
+    {id: "wine", name: "Красное вино", coef: 0.18, color: "#880e4f"},
+    {id: "ink", name: "Чернила", coef: 0.20, color: "#311b92"},
+    {id: "urine", name: "Моча", coef: 0.28, color: "#ffca28"},
+    {id: "deodorant", name: "Дезодорант", coef: 0.23, color: "#78909c"},
+    {id: "ketchup", name: "Кетчуп", coef: 0.15, color: "#c62828"},
+    {id: "lemon_juice", name: "Лимонный сок", coef: -0.05, color: "#fff176"},
+    {id: "milk", name: "Молоко", coef: 0.06, color: "#e3f2fd"},
+    {id: "chocolate", name: "Шоколад", coef: 0.02, color: "#5d4037"},
+    {id: "honey", name: "Мёд", coef: 0.00, color: "#ffab00"},
+    {id: "sugar", name: "Сахар", coef: 0.00, color: "#fffde7"},
+    {id: "citric", name: "Лимонная кислота", coef: -0.12, color: "#ffeb3b"}
+];
+
+const basePowder = 110;
+
+const container = document.getElementById("stains-selection");
+stains.forEach(stain => {
+    const div = document.createElement("div");
+    div.className = "stain-item";
+    div.style.borderLeftColor = stain.color;
+    div.innerHTML = `
+        <input type="checkbox" id="${stain.id}">
+        <label class="stain-name" for="${stain.id}">${stain.name}</label>
+        <div class="slider-container">
+            <input type="range" min="1" max="10" value="1" class="slider" disabled>
+            <div class="mass-value">—</div>
+        </div>
+    `;
+    container.appendChild(div);
+});
+
+const ctx = document.getElementById('contributionChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: 'Вклад в Δ', data: [], backgroundColor: [], borderWidth: 1 }] },
+    options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { beginAtZero: true } } }
+    }
+});
+
+function updateAll() {
+    let deltaTotal = 0;
+    const labels = [];
+    const data = [];
+    const colors = [];
+
+    document.querySelectorAll('.stain-item').forEach(item => {
+        const cb = item.querySelector('input[type="checkbox"]');
+        const slider = item.querySelector('.slider');
+        const massDisplay = item.querySelector('.mass-value');
+
+        if (cb.checked) {
+            const mass = parseInt(slider.value);
+            massDisplay.textContent = `${mass} мг`;
+            const stain = stains.find(s => s.id === cb.id);
+            const delta = mass * stain.coef;
+            deltaTotal += delta;
+
+            labels.push(stain.name);
+            data.push(delta);
+            colors.push(stain.color);
+        } else {
+            massDisplay.textContent = "—";
+        }
+    });
+
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = data;
+    chart.data.datasets[0].backgroundColor = colors;
+    chart.update('none');
+
+    // Плавная проводимость и порошок
+    const conductivity = Math.round(50 + deltaTotal * 20);
+    const clampedConductivity = Math.max(0, Math.min(100, conductivity));
+    document.getElementById("conductivity-fill").style.width = clampedConductivity + "%";
+    document.getElementById("conductivity-label").textContent = clampedConductivity + "%";
+
+    const powder = Math.round(basePowder + deltaTotal * 40);
+    const finalPowder = Math.max(50, powder); // минимум 50 г
+
+    document.getElementById("powder-mass").textContent = finalPowder + " г";
+
+    const diff = finalPowder - basePowder;
+    const changeEl = document.getElementById("powder-change");
+    if (diff > 0) changeEl.textContent = `+${diff} г больше!`;
+    else if (diff < 0) changeEl.textContent = `${-diff} г меньше!`;
+    else changeEl.textContent = "как обычно";
+
+    if (deltaTotal === 0) {
+        document.getElementById("conductivity-label").textContent = "50%";
+        document.getElementById("powder-mass").textContent = "110 г";
+        changeEl.textContent = "как обычно";
+    }
+}
+
+document.getElementById("stains-selection").addEventListener("input", e => {
+    if (e.target.type === "checkbox") {
+        const slider = e.target.parentNode.querySelector(".slider");
+        const massDisplay = e.target.parentNode.querySelector(".mass-value");
+        slider.disabled = !e.target.checked;
+        if (e.target.checked) {
+            slider.value = 5;
+            massDisplay.textContent = "5 мг";
+        } else {
+            massDisplay.textContent = "—";
+        }
+    } else if (e.target.classList.contains("slider")) {
+        const mass = e.target.value;
+        e.target.parentNode.querySelector(".mass-value").textContent = `${mass} мг`;
+    }
+    updateAll();
+});
+
+document.getElementById("reset-btn").addEventListener("click", () => {
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+    document.querySelectorAll('.slider').forEach(s => { s.disabled = true; s.value = 1; });
+    document.querySelectorAll('.mass-value').forEach(m => m.textContent = "—");
+    updateAll();
+});
+
+updateAll();
+</script>
+
+</body>
+</html>
